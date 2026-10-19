@@ -1,0 +1,72 @@
+# Gitleaks Configuration for SentinelPR
+title = "SentinelPR Gitleaks Rules"
+
+[allowlist]
+description = "Global allowlist for benign fixtures, tests, and documentation"
+paths = [
+    '''tests/fixtures/''',
+    '''\.env\.example$'''
+]
+regexes = [
+    '''(?i)example''',
+    '''(?i)dummy''',
+    '''(?i)test''',
+    '''FAKE_KEY_FOR_TESTING_ONLY'''
+]
+
+# Generic API Key
+[[rules]]
+id = "generic-api-key"
+description = "Detected Generic API Key"
+regex = '''(?i)(?:key|api_key|apikey|secret|token)\s*(?::|=)\s*['"][0-9a-zA-Z\-_]{16,64}['"]'''
+secretGroup = 0
+keywords = ["key", "api_key", "apikey", "secret", "token"]
+
+# AWS Access Key ID
+[[rules]]
+id = "aws-access-key-id"
+description = "Detected AWS Access Key ID"
+regex = '''(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+keywords = ["AKIA", "ASIA"]
+
+# AWS Secret Access Key
+[[rules]]
+id = "aws-secret-access-key"
+description = "Detected AWS Secret Access Key"
+regex = '''(?i)aws_(?:secret_access_key|secret_key)\s*=\s*['"][0-9a-zA-Z/+]{40}['"]'''
+keywords = ["aws_secret_access_key"]
+
+# GitHub Personal Access Token / Fine-Grained Token
+[[rules]]
+id = "github-pat"
+description = "Detected GitHub Personal Access Token"
+regex = '''ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{82}'''
+keywords = ["ghp_", "github_pat_"]
+
+# Generic Private Key
+[[rules]]
+id = "private-key"
+description = "Detected Private Key"
+regex = '''-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'''
+keywords = ["BEGIN", "PRIVATE KEY"]
+
+# Database Connection String with Credentials
+[[rules]]
+id = "db-connection-string"
+description = "Detected Database Connection String containing credentials"
+regex = '''(?i)(?:postgres|postgresql|mysql|mongodb|redis):\/\/[a-zA-Z0-9_\-\.]+:[^@\s]+@[a-zA-Z0-9_\-\.]+'''
+keywords = ["postgres://", "postgresql://", "mysql://", "mongodb://", "redis://"]
+
+# Slack Token
+[[rules]]
+id = "slack-token"
+description = "Detected Slack Token"
+regex = '''xox[baprs]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*'''
+keywords = ["xoxb", "xoxa", "xoxp", "xoxr", "xoxs"]
+
+# Stripe API Key
+[[rules]]
+id = "stripe-api-key"
+description = "Detected Stripe API Key"
+regex = '''(?:sk|rk)_(?:live|test)_[0-9a-zA-Z]{24,99}'''
+keywords = ["sk_live", "sk_test", "rk_live", "rk_test"]

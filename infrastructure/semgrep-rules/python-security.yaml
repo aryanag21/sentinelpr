@@ -1,0 +1,46 @@
+rules:
+  - id: python-sqli-format
+    patterns:
+      - pattern-either:
+          - pattern: $DB.execute(f"... {$VAR} ...")
+          - pattern: $DB.execute("..." % $VAR)
+          - pattern: $DB.execute("...".format($VAR))
+    message: "Detected potential SQL injection via string formatting in execute call."
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      category: security
+
+  - id: python-subprocess-shell-true
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+    message: "Detected subprocess call with shell=True, enabling potential command injection."
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      category: security
+
+  - id: python-insecure-deserialization-pickle
+    patterns:
+      - pattern-either:
+          - pattern: pickle.loads(...)
+          - pattern: pickle.load(...)
+          - pattern: _pickle.loads(...)
+    message: "Detected insecure deserialization using pickle. Untrusted data could execute arbitrary code."
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      category: security
+
+  - id: python-insecure-tls-verify-false
+    patterns:
+      - pattern: requests.$FUNC(..., verify=False, ...)
+    message: "Disabled TLS certificate verification in requests."
+    languages: [python]
+    severity: WARNING
+    metadata:
+      cwe: "CWE-295: Improper Certificate Validation"
+      category: security

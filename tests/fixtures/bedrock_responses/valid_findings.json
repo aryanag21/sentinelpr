@@ -1,0 +1,19 @@
+{
+  "findings": [
+    {
+      "category": "injection",
+      "severity": "HIGH",
+      "title": "SQL Injection in User Profile Lookup",
+      "description": "User-supplied parameter 'username' is formatted directly into SQL query string.",
+      "file_path": "tests/fixtures/vulnerable_repo/sqli.py",
+      "line_start": 4,
+      "line_end": 6,
+      "evidence": "query = f\"SELECT id, username, email FROM users WHERE username = '{username}'\"",
+      "confidence": "HIGH",
+      "remediation": "Use parameterized query bindings.",
+      "source": "ai",
+      "rule_id": "bedrock.sqli"
+    }
+  ],
+  "summary": "Detected 1 high-severity SQL injection flaw."
+}

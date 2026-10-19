@@ -1,0 +1,12 @@
+{
+  "findings": [
+    {
+      "category": "unknown_category_invalid",
+      "severity": "CRITICAL_SUPER",
+      "title": "Invalid schema test",
+      "line_start": -10,
+      "line_end": -5
+    }
+  ],
+  "summary": "Invalid schema"
+}

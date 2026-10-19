@@ -1,0 +1,7 @@
+```json
+{
+  "findings": [
+    {
+      "category": "injection",
+      "severity": "HIGH",
+      "title": "Broken JSON missing closing brace"

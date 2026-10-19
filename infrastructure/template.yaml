@@ -1,0 +1,252 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SentinelPR: Automated Git Code Review & Security Auditor
+  Serverless pipeline for automated PR secret detection, SAST, and AI contextual auditing.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [local, dev, prod]
+    Description: Deployment target environment.
+
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-3-5-haiku-20241022-v1:0
+    Description: Amazon Bedrock model ID for contextual security reviews.
+
+  BedrockRegion:
+    Type: String
+    Default: us-east-1
+    Description: AWS region where Amazon Bedrock runtime is invoked.
+
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    Description: CloudWatch log retention period in days.
+
+  GitHubAppId:
+    Type: Number
+    Default: 123456
+    Description: GitHub App Identifier.
+
+  AllowedRepoIds:
+    Type: String
+    Default: ""
+    Description: Optional comma-separated GitHub repository IDs to audit.
+
+  MaxInlineComments:
+    Type: Number
+    Default: 25
+    Description: Maximum number of inline review comments per scan.
+
+Globals:
+  Function:
+    Timeout: 30
+    Tracing: Active
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        POWERTOOLS_SERVICE_NAME: sentinelpr
+        LOG_LEVEL: INFO
+
+Resources:
+  # ============================================================================
+  # 1. API Gateway HTTP API
+  # ============================================================================
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiGatewayAccessLogGroup.Arn
+        # Strictly exclude requestBody to ensure no secret payload is logged
+        Format: >-
+          {"requestId":"$context.requestId","ip":"$context.identity.sourceIp","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}
+
+  ApiGatewayAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/sentinelpr-${Environment}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  # ============================================================================
+  # 2. DynamoDB Single Table
+  # ============================================================================
+  ScanTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "sentinelpr-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # ============================================================================
+  # 3. SQS Queues & Dead Letter Queue
+  # ============================================================================
+  ScanDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "sentinelpr-scan-dlq-${Environment}"
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  ScanQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "sentinelpr-scan-queue-${Environment}"
+      VisibilityTimeout: 600 # 10 minutes (Worker timeout 8m + 2m buffer)
+      MessageRetentionPeriod: 345600 # 4 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ScanDLQ.Arn
+        maxReceiveCount: 3
+
+  ScanDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "sentinelpr-dlq-alarm-${Environment}"
+      AlarmDescription: "Alert when failed scan messages enter DLQ"
+      Namespace: "AWS/SQS"
+      MetricName: "ApproximateNumberOfMessagesVisible"
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ScanDLQ.QueueName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+  # ============================================================================
+  # 4. Secrets Manager References
+  # ============================================================================
+  GitHubAppKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "sentinelpr/github-app-key-${Environment}"
+      Description: "SentinelPR GitHub App Private Key PEM"
+
+  GitHubWebhookSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "sentinelpr/webhook-secret-${Environment}"
+      Description: "SentinelPR GitHub Webhook HMAC Secret"
+
+  # ============================================================================
+  # 5. Webhook Ingestion Lambda
+  # ============================================================================
+  WebhookIngestionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "sentinelpr-ingestion-${Environment}"
+      CodeUri: ../
+      Handler: sentinelpr.handlers.webhook.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      LoggingConfig:
+        LogGroup: !Ref WebhookLogGroup
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref ScanTable
+          SCAN_QUEUE_URL: !Ref ScanQueue
+          GITHUB_WEBHOOK_SECRET_ARN: !Ref GitHubWebhookSecret
+          ALLOWED_REPO_IDS: !Ref AllowedRepoIds
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ScanQueue.QueueName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ScanTable
+        - SecretsManagerReadPolicy:
+            SecretArn: !Ref GitHubWebhookSecret
+      Events:
+        WebhookRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /webhook
+            Method: POST
+
+  WebhookLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/sentinelpr-ingestion-${Environment}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  # ============================================================================
+  # 6. Worker Lambda (Container Image)
+  # ============================================================================
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "sentinelpr-worker-${Environment}"
+      PackageType: Image
+      MemorySize: 1024
+      Timeout: 480 # 8 minutes
+      LoggingConfig:
+        LogGroup: !Ref WorkerLogGroup
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref ScanTable
+          GITHUB_APP_ID: !Ref GitHubAppId
+          GITHUB_APP_PRIVATE_KEY_SECRET_ARN: !Ref GitHubAppKeySecret
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          BEDROCK_REGION: !Ref BedrockRegion
+          MAX_INLINE_COMMENTS: !Ref MaxInlineComments
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ScanTable
+        - SecretsManagerReadPolicy:
+            SecretArn: !Ref GitHubAppKeySecret
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:${BedrockRegion}::foundation-model/${BedrockModelId}"
+      Events:
+        SQSBatchEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ScanQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+    Metadata:
+      DockerTag: latest
+      DockerContext: ../
+      Dockerfile: infrastructure/Dockerfile
+
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/sentinelpr-worker-${Environment}"
+      RetentionInDays: !Ref LogRetentionDays
+
+Outputs:
+  WebhookEndpoint:
+    Description: "Public API Gateway Webhook URL to configure in GitHub App"
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhook"
+
+  ScanTableArn:
+    Description: "DynamoDB Scan Table ARN"
+    Value: !GetAtt ScanTable.Arn
+
+  ScanQueueArn:
+    Description: "Main SQS Queue ARN"
+    Value: !GetAtt ScanQueue.Arn
+
+  ScanDLQArn:
+    Description: "SQS Dead Letter Queue ARN"
+    Value: !GetAtt ScanDLQ.Arn

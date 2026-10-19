@@ -1,0 +1,24 @@
+rules:
+  - id: js-eval-execution
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: window.eval(...)
+    message: "Use of eval() can allow arbitrary JavaScript execution from untrusted inputs."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+      category: security
+
+  - id: js-child-process-exec
+    patterns:
+      - pattern-either:
+          - pattern: child_process.exec($CMD, ...)
+          - pattern: exec($CMD, ...)
+    message: "child_process.exec invokes system shell, risking command injection."
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-78: OS Command Injection"
+      category: security

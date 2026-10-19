@@ -1,0 +1,42 @@
+name: Security Auditor
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  security-audit:
+    name: Automated Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          # Install Gitleaks
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | sudo tar -xz -C /usr/local/bin gitleaks
+
+      - name: Deterministic Secret Scan (Gitleaks)
+        run: |
+          gitleaks detect --source . --config .gitleaks.toml --report-format json --report-path /tmp/gitleaks.json --no-banner --verbose
+
+      - name: Run SentinelPR Policy Audit
+        run: |
+          python -m sentinelpr.cli scan . --output sarif > /tmp/sentinelpr-report.sarif
+          python -m sentinelpr.cli scan . --severity HIGH
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: /tmp/sentinelpr-report.sarif

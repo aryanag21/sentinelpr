@@ -1,0 +1,75 @@
+name: Deploy to AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target deployment environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
+      aws_region:
+        description: "AWS Region for deployment"
+        required: true
+        default: "us-east-1"
+        type: string
+
+jobs:
+  deploy:
+    name: Build & Deploy SentinelPR Stack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Required if using AWS OIDC role assumption
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: SAM Build (Container & Lambdas)
+        run: |
+          sam build --template infrastructure/template.yaml
+
+      - name: SAM Deploy
+        run: |
+          sam deploy \
+            --stack-name "sentinelpr-${{ inputs.environment }}" \
+            --resolve-s3 \
+            --resolve-image-repositories \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              Environment="${{ inputs.environment }}" \
+              BedrockRegion="${{ inputs.aws_region }}"
+
+      - name: Print Deployment Outputs
+        run: |
+          echo "=========================================================="
+          echo "SentinelPR deployed successfully to AWS!"
+          echo "Outputs:"
+          aws cloudformation describe-stacks \
+            --stack-name "sentinelpr-${{ inputs.environment }}" \
+            --query "Stacks[0].Outputs" \
+            --output table
+          echo "=========================================================="

@@ -1,0 +1,46 @@
+name: Teardown AWS Resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment to delete"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
+      aws_region:
+        description: "AWS Region"
+        required: true
+        default: "us-east-1"
+        type: string
+
+jobs:
+  teardown:
+    name: Destroy SentinelPR Stack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: SAM Delete Stack
+        run: |
+          sam delete \
+            --stack-name "sentinelpr-${{ inputs.environment }}" \
+            --region "${{ inputs.aws_region }}" \
+            --no-prompts

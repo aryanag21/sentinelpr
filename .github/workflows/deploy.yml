@@ -55,7 +55,7 @@ jobs:
           sam deploy \
             --stack-name "sentinelpr-${{ inputs.environment }}" \
             --resolve-s3 \
-            --resolve-image-repositories \
+            --resolve-image-repos \
             --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \

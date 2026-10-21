@@ -1,0 +1,32 @@
+name: Cloud Nuke AWS Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: "AWS Region to nuke"
+        required: true
+        default: "us-east-1"
+        type: string
+
+jobs:
+  cloud-nuke:
+    name: Run Cloud-Nuke on AWS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Install cloud-nuke
+        run: |
+          curl -sSL -o /usr/local/bin/cloud-nuke https://github.com/gruntwork-io/cloud-nuke/releases/download/v0.37.1/cloud-nuke_linux_amd64
+          chmod +x /usr/local/bin/cloud-nuke
+
+      - name: Run cloud-nuke
+        run: |
+          cloud-nuke aws --region "${{ inputs.aws_region }}" --force

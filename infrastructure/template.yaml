@@ -137,14 +137,12 @@ Resources:
     Properties:
       Name: !Sub "sentinelpr/github-app-key-${Environment}"
       Description: "SentinelPR GitHub App Private Key PEM"
-      SecretString: "placeholder-github-app-key"
 
   GitHubWebhookSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub "sentinelpr/webhook-secret-${Environment}"
       Description: "SentinelPR GitHub Webhook HMAC Secret"
-      SecretString: "sentinelpr-dev-webhook-secret-token"
 
   # ============================================================================
   # 5. Webhook Ingestion Lambda

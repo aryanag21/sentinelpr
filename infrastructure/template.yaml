@@ -170,8 +170,11 @@ Resources:
             QueueName: !GetAtt ScanQueue.QueueName
         - DynamoDBCrudPolicy:
             TableName: !Ref ScanTable
-        - SecretsManagerReadPolicy:
-            SecretArn: !Ref GitHubWebhookSecret
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref GitHubWebhookSecret
       Events:
         WebhookRoute:
           Type: HttpApi
@@ -210,9 +213,11 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ScanTable
-        - SecretsManagerReadPolicy:
-            SecretArn: !Ref GitHubAppKeySecret
         - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref GitHubAppKeySecret
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel

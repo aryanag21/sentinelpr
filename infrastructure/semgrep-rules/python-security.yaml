@@ -5,6 +5,19 @@ rules:
           - pattern: $DB.execute(f"... {$VAR} ...")
           - pattern: $DB.execute("..." % $VAR)
           - pattern: $DB.execute("...".format($VAR))
+          - pattern: f"SELECT $FIELDS FROM $TABLE WHERE $COND = '$VAR'"
+          - pattern: |
+              $Q = f"... {$VAR} ..."
+              ...
+              $DB.execute($Q)
+          - pattern: |
+              $Q = "..." % $VAR
+              ...
+              $DB.execute($Q)
+          - pattern: |
+              $Q = "...".format($VAR)
+              ...
+              $DB.execute($Q)
     message: "Detected potential SQL injection via string formatting in execute call."
     languages: [python]
     severity: ERROR

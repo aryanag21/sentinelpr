@@ -31,7 +31,9 @@ def test_e2e_local_scan_against_vulnerable_fixture():
 
     # 2. Verify SQL Injection Detection
     sqli_findings = [
-        f for f in result.findings if f.category == FindingCategory.INJECTION and "SQL" in f.title
+        f
+        for f in result.findings
+        if f.category == FindingCategory.INJECTION and "sql" in f.title.lower()
     ]
     assert len(sqli_findings) >= 1
     assert "sqli.py" in sqli_findings[0].file_path

@@ -41,9 +41,18 @@ class SemgrepScanner(BaseScanner):
 
     def scan_path(self, path: str, **kwargs: Any) -> list[Finding]:
         """Runs Semgrep against a directory or file path."""
+        findings: list[Finding] = []
         if self._is_semgrep_available() and os.path.exists(self.rules_path):
-            return self._run_semgrep(path)
-        return self._run_builtin_sast(path)
+            findings.extend(self._run_semgrep(path))
+
+        # Complement with builtin SAST patterns to maximize coverage
+        builtin_findings = self._run_builtin_sast(path)
+        seen = {(f.file_path, f.line_start, f.category) for f in findings}
+        for bf in builtin_findings:
+            if (bf.file_path, bf.line_start, bf.category) not in seen:
+                findings.append(bf)
+
+        return findings
 
     def scan_diff(self, diff_content: str, **kwargs: Any) -> list[Finding]:
         """Scans changed code in a unified diff."""
@@ -91,12 +100,18 @@ class SemgrepScanner(BaseScanner):
         cwe_str = str(cwe).lower()
         if "89" in cwe_str or "sql" in check_id.lower():
             category = FindingCategory.INJECTION
+            display_title = f"Semgrep SQL Injection: {check_id}"
         elif "78" in cwe_str or "command" in check_id.lower() or "subprocess" in check_id.lower():
             category = FindingCategory.INJECTION
+            display_title = f"Semgrep Command Injection: {check_id}"
         elif "502" in cwe_str or "pickle" in check_id.lower():
             category = FindingCategory.DESERIALIZATION
+            display_title = f"Semgrep Insecure Deserialization: {check_id}"
         elif "22" in cwe_str or "traversal" in check_id.lower():
             category = FindingCategory.PATH_TRAVERSAL
+            display_title = f"Semgrep Path Traversal: {check_id}"
+        else:
+            display_title = f"Semgrep: {check_id}"
 
         path = item.get("path", "unknown")
         start = item.get("start", {}).get("line", 1)
@@ -106,7 +121,7 @@ class SemgrepScanner(BaseScanner):
         return normalize_scanner_finding(
             raw_source=self.name,
             raw_severity=raw_sev,
-            title=f"Semgrep: {check_id}",
+            title=display_title,
             description=message,
             file_path=path,
             line_start=start,

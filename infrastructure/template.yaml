@@ -160,6 +160,7 @@ Resources:
         LogGroup: !Ref WebhookLogGroup
       Environment:
         Variables:
+          PYTHONPATH: "/var/task/src:/var/task"
           DYNAMODB_TABLE_NAME: !Ref ScanTable
           SCAN_QUEUE_URL: !Ref ScanQueue
           GITHUB_WEBHOOK_SECRET_ARN: !Ref GitHubWebhookSecret
@@ -199,6 +200,7 @@ Resources:
         LogGroup: !Ref WorkerLogGroup
       Environment:
         Variables:
+          PYTHONPATH: "/var/task/src:/var/task"
           DYNAMODB_TABLE_NAME: !Ref ScanTable
           GITHUB_APP_ID: !Ref GitHubAppId
           GITHUB_APP_PRIVATE_KEY_SECRET_ARN: !Ref GitHubAppKeySecret
